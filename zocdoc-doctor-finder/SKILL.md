@@ -10,6 +10,21 @@ compatibility: Requires browser access (e.g., computer use or browser automation
 
 Find in-network healthcare providers with real-time availability on Zocdoc.com using browser automation. Extract data from Zocdoc's Redux store and GraphQL API — no authentication required.
 
+## Browser Requirements
+
+This skill requires the user's **real browser session** — not a headless browser, fresh profile, or isolated automation context. Use the browser the user already has open, with their existing cookies, history, and login state. A clean profile with no browsing history is more likely to trigger bot detection.
+
+**Pacing:** Wait for each page to fully load before taking the next action. Do not rapid-fire navigate between pages. A 2-3 second pause between actions mimics normal browsing and reduces bot detection risk.
+
+**Two interaction modes exist:**
+
+| Mode | Can run console JS? | How to extract data |
+|------|-------------------|-------------------|
+| **Programmatic** (Playwright, Puppeteer) | Yes | Redux state extraction (preferred) |
+| **Computer use** (screen-based agent) | No | Read data directly from the visible page |
+
+Both modes follow the same workflow — the only difference is *how* you extract data at each step. Instructions for both are included below.
+
 ## When to Use
 
 - User asks to find a doctor, dentist, or specialist
@@ -97,9 +112,19 @@ If the specialty ID is unknown, use the homepage search: navigate to `zocdoc.com
 
 This returns clean JSON from the Redux store — much more reliable than parsing the DOM.
 
-4. **Fallback**: If Redux state is unavailable, read search results from the DOM snapshot. Each article/result card contains provider name, rating, reviews, address, badges, and availability grid.
+4. **Computer-use alternative**: If you cannot run JavaScript (screen-based agent), read the search results directly from the visible page. Each result card shows:
+   - Provider name and credentials (header of each card)
+   - Star rating and review count (below the name)
+   - Address and distance (below rating)
+   - Badges like "Highly Recommended" (if present)
+   - Availability preview (date/time slots on the right side of the card)
+   - "Sponsored" label (top-right corner, if applicable)
 
-5. Present results to the user in a clean summary. Format each provider like:
+   Read each card carefully and extract these fields from what is visible. **Do not infer or fabricate any field you cannot see on the page.**
+
+5. **Fallback**: If Redux state is unavailable and you are in programmatic mode, read search results from the DOM snapshot. Each article/result card contains provider name, rating, reviews, address, badges, and availability grid.
+
+6. Present results to the user in a clean summary. Format each provider like:
 
    ```
    1. **Dr. Name, MD** — ⭐ 4.96 (312 reviews) · Highly Recommended
@@ -142,7 +167,7 @@ Summarize relevant sections based on what the user cares about.
 
 **Option A — GQL API** (best for bulk/extended availability): Call `POST https://api.zocdoc.com/directory/v3/gql` with the `providerLocationsAvailability` operation to get exact timeslots per date. See [references/api-patterns.md](references/api-patterns.md) for the full query and response structure. Get `searchRequestId` and `providerLocationIds` from the Redux state extracted in step 3.
 
-**Option B — DOM interaction**: On the provider profile page:
+**Option B — DOM / visual interaction**: On the provider profile page:
 - The availability grid shows dates with appointment counts
 - Click a date cell to see specific time slots
 - Use "Show more availability" buttons to navigate earlier/later dates
@@ -183,6 +208,23 @@ Apply these filters via the search page filter buttons:
 | In-person/video | Visit type |
 | More filters | Gender, language, sees children, etc. |
 
+## Data Integrity
+
+**Only report data you actually extracted from Zocdoc.** Never present a provider name, address, phone number, rating, review count, or availability that you did not read from Zocdoc's page, Redux state, or API response. If a field is not visible or not returned, omit it — do not guess or fill in from another source.
+
+If you used a different source (e.g., a web search), you must explicitly tell the user: "I couldn't load Zocdoc results, so these come from a general web search and may not reflect current Zocdoc availability or insurance acceptance."
+
+## Failure Protocol
+
+**If you cannot load Zocdoc search results — for any reason — tell the user immediately.** Do not silently switch to a web search or another data source.
+
+Specifically:
+- If the page shows a CAPTCHA, access denied, or error page: tell the user what you see and ask them to try loading the page manually
+- If the page loads but results are empty or the Redux state returns no data: retry once after waiting for full page load, then report the failure
+- If you are blocked or rate-limited: tell the user and suggest they try the search directly at the URL you constructed
+
+**Never fabricate results to fill a gap.** An honest "I couldn't load results" is always better than plausible-looking data the user can't verify.
+
 ## Common Mistakes
 
 - **Not bypassing the visit reason picker.** After navigating to a search URL, a "What type of care are you looking for?" modal often appears. You must click "Skip to search results" or results won't load and Redux state will be empty.
@@ -190,6 +232,9 @@ Apply these filters via the search page filter buttons:
 - **Not disclosing sponsored results.** Sponsored providers appear first and look like organic results. Always check the `isSponsored` field and tell the user which results are ads.
 - **Forgetting insurance.** Insurance is the #1 filter that determines which doctors appear. Always ask if not provided.
 - **Using specialty ID when condition is given.** If the user describes a condition ("back pain") rather than a specialty, use the homepage search autocomplete — Zocdoc maps conditions to the right specialties internally. Don't guess the specialty ID.
+- **Navigating too fast.** Rapid page transitions trigger bot detection. Wait for each page to fully render (2-3 seconds) before taking the next action.
+- **Using a fresh browser profile.** A browser with no cookies or history is more likely to be flagged. Always use the user's existing browser session.
+- **Silently falling back to web search.** If Zocdoc doesn't load, tell the user. Never quietly switch data sources and present the results as if they came from Zocdoc.
 
 ## Handling Common Situations
 
