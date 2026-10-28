@@ -54,3 +54,4 @@ zocdoc-doctor-finder/
 - "Give me the booking link for the first doctor with the earliest availability"
 
 See [SKILL.md](zocdoc-doctor-finder/SKILL.md#example-conversations) for full worked examples showing the complete search-to-book flow.
+<img width="61" height="54" alt="image" src="https://github.com/user-attachments/assets/e8963917-f8d8-483c-8e02-ad7b0f6d2bc7" />
